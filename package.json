@@ -1,0 +1,24 @@
+{
+  "name": "rx-overlap-checker",
+  "version": "1.0.0",
+  "description": "Finds hidden ingredient overlaps and unsafe daily totals in Indian prescriptions. Web app + REST API.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "medication-safety",
+    "prescription",
+    "india",
+    "healthcare",
+    "drug-interaction",
+    "paracetamol"
+  ],
+  "license": "MIT",
+  "author": "saigagan"
+}

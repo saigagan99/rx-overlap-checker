@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#061A22">
+<meta name="description" content="Find hidden ingredient overlaps and unsafe daily totals in Indian prescriptions.">
+<title>Rx Overlap Checker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232DD4BF'/%3E%3Cpath d='m14 26.7 12.7-12.7a6.3 6.3 0 1 0-8.9-8.9L5.1 17.8a6.3 6.3 0 1 0 8.9 8.9Z M11.4 11.4l9.2 9.2' fill='none' stroke='%2304201C' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700;800&family=Noto+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Design: deep navy-teal clinical theme. Teal/mint primary from the ui-ux-pro-max healthcare palette, adapted for dark surfaces.
+   Contrast: body text #E7F5F8 on #0B2531 ≈ 14:1, muted #9CBDC6 ≈ 7.5:1, primary text #04201C on #2DD4BF ≈ 10:1. */
+:root{
+  color-scheme: dark;
+  --bg:#061A22; --surface:#0B2531; --surface-2:#0F2F3D; --surface-3:#143A4A;
+  --border:rgba(148,222,235,.13); --border-strong:rgba(148,222,235,.28);
+  --fg:#E7F5F8; --heading:#F4FCFE; --muted:#9CBDC6; --faint:#7F9FA9;
+  --primary:#2DD4BF; --primary-hover:#5EEAD4; --on-primary:#04201C; --ring:#5EEAD4; --glow:rgba(45,212,191,.35);
+  --danger:#FB7185; --danger-bg:rgba(244,63,94,.12); --danger-border:rgba(251,113,133,.38);
+  --warn:#FBBF24;   --warn-bg:rgba(251,191,36,.10);  --warn-border:rgba(251,191,36,.36);
+  --info:#38BDF8;   --info-bg:rgba(56,189,248,.10);  --info-border:rgba(56,189,248,.34);
+  --ok:#34D399;     --ok-bg:rgba(52,211,153,.10);    --ok-border:rgba(52,211,153,.34);
+  --r:14px; --r-lg:20px;
+  --font-head:"Figtree", system-ui, sans-serif; --font-body:"Noto Sans", system-ui, sans-serif;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;color:var(--fg);font:16px/1.55 var(--font-body);
+  background:
+    radial-gradient(900px 600px at 85% -10%, rgba(34,211,238,.14), transparent 60%),
+    radial-gradient(700px 500px at -10% 110%, rgba(45,212,191,.12), transparent 60%),
+    var(--bg);
+  background-attachment:fixed}
+h1,h2,h3{font-family:var(--font-head);color:var(--heading);line-height:1.2;margin:0}
+p{margin:0}
+a{color:var(--primary)}
+.i{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:3px solid var(--ring);outline-offset:2px;border-radius:6px}
+code{font-size:.88em;background:var(--surface-3);color:var(--fg);padding:1px 6px;border-radius:5px;overflow-wrap:anywhere}
+
+/* ---------- App shell ---------- */
+.app{display:grid;min-height:100vh;grid-template-columns:minmax(0,1fr)}
+@media (min-width:1024px){ .app{grid-template-columns:340px minmax(0,1fr)} }
+.rail{display:none}
+@media (min-width:1024px){
+  .rail{display:flex;flex-direction:column;gap:28px;position:sticky;top:0;height:100vh;padding:32px 28px;overflow-y:auto;
+    border-right:1px solid var(--border);background:linear-gradient(180deg, rgba(11,37,49,.85), rgba(6,26,34,.6));backdrop-filter:blur(8px)}
+}
+.brand{display:flex;align-items:center;gap:12px;font:800 19px var(--font-head);color:var(--heading);text-decoration:none;white-space:nowrap}
+.brand-mark{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;color:var(--on-primary);
+  background:linear-gradient(135deg,#5EEAD4,#22D3EE);box-shadow:0 6px 20px -6px var(--glow)}
+.rail-lead{color:var(--muted);font-size:14px;margin-top:-12px}
+
+.stepper{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.stepper li{position:relative}
+.stepper li:not(:last-child)::after{content:"";position:absolute;left:23px;top:50px;bottom:-8px;width:2px;background:var(--border);border-radius:2px}
+.stepper li.done:not(:last-child)::after{background:linear-gradient(var(--primary),rgba(45,212,191,.2))}
+.stepper button{all:unset;box-sizing:border-box;display:flex;gap:14px;align-items:center;width:100%;padding:8px;border-radius:12px;cursor:pointer;min-height:56px}
+.stepper button:disabled{cursor:default}
+.stepper button:not(:disabled):hover{background:var(--surface-2)}
+.stepper button:focus-visible{outline:3px solid var(--ring)}
+.dot{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;flex:none;font:700 14px var(--font-head);
+  background:var(--surface-2);color:var(--faint);border:1px solid var(--border);transition:all .25s var(--ease)}
+.dot .i{width:16px;height:16px;stroke-width:3}
+.stepper .t{display:block;font:600 15px var(--font-head);color:var(--muted)}
+.stepper .s{display:block;font-size:13px;color:var(--faint)}
+li[aria-current=step] .dot{background:var(--primary);color:var(--on-primary);border-color:var(--primary);box-shadow:0 0 0 6px rgba(45,212,191,.15)}
+li[aria-current=step] .t{color:var(--heading)}
+li.done .dot{background:rgba(45,212,191,.15);color:var(--primary);border-color:rgba(45,212,191,.4)}
+li.done .t{color:var(--fg)}
+.rail-foot{margin-top:auto;display:grid;gap:12px}
+.trust{display:flex;gap:10px;font-size:13px;color:var(--muted);align-items:flex-start}
+.trust .i{width:18px;height:18px;color:var(--primary);margin-top:1px}
+
+/* Mobile top bar + progress */
+.topbar{display:flex;align-items:center;gap:10px;padding:12px 16px;position:sticky;top:0;z-index:5;
+  background:rgba(6,26,34,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+.topbar .spacer{flex:1}
+.topbar .brand-mark{width:34px;height:34px;border-radius:10px}
+.topbar .brand{font-size:17px}
+@media (min-width:1024px){ .topbar{display:none} }
+.mprog{padding:14px 16px 0}
+.mprog .row1{font-size:13px;color:var(--muted)}
+.mprog .row1 b{color:var(--heading);font-family:var(--font-head)}
+.track{height:6px;border-radius:99px;background:var(--surface-3);margin-top:8px;overflow:hidden}
+.track i{display:block;height:100%;width:25%;border-radius:99px;background:linear-gradient(90deg,#2DD4BF,#22D3EE);transition:width .35s var(--ease)}
+@media (min-width:1024px){ .mprog{display:none} }
+
+.main{padding:20px 16px 120px;width:100%;max-width:860px;margin:0 auto}
+@media (min-width:1024px){ .main{padding:48px 48px 64px} }
+.desk-tools{display:none}
+@media (min-width:1024px){ .desk-tools{display:flex;justify-content:flex-end;margin-bottom:4px} }
+
+/* ---------- Step panel ---------- */
+.step{animation:enter .3s var(--ease)}
+@keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.eyebrow{font:700 12px var(--font-head);letter-spacing:.12em;text-transform:uppercase;color:var(--primary)}
+@media (max-width:1023px){ .eyebrow{display:none} }
+.step h1{font-size:clamp(28px,4.2vw,40px);font-weight:800;letter-spacing:-.02em;margin:10px 0}
+.step h1:focus{outline:none}
+.lead{color:var(--muted);font-size:17px;max-width:60ch}
+.panel{margin-top:28px;background:linear-gradient(180deg,var(--surface),rgba(11,37,49,.75));border:1px solid var(--border);border-radius:var(--r-lg);padding:22px;
+  box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 20px 50px -30px rgba(0,0,0,.6)}
+@media (min-width:640px){ .panel{padding:30px} }
+.section-title{font:700 15px var(--font-head);color:var(--heading);margin:0 0 14px;padding:0;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.section-title .opt{font:500 13px var(--font-body);color:var(--faint)}
+.divider{height:1px;background:var(--border);margin:26px 0}
+fieldset{border:0;padding:0;margin:0;min-width:0}
+
+/* ---------- Forms ---------- */
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+@media (min-width:640px){ .basics{grid-template-columns:repeat(4,minmax(0,1fr))} .basics .wide{grid-column:span 2} }
+.field label,.label{display:block;font:600 14px var(--font-head);color:var(--fg);margin-bottom:8px}
+.req{color:var(--primary);margin-left:2px}
+.optional{font:500 12px var(--font-body);color:var(--faint);margin-left:6px}
+input,select,textarea{width:100%;font:inherit;font-size:16px;color:var(--fg);background:var(--surface-2);border:1px solid var(--border-strong);
+  border-radius:10px;padding:11px 14px;min-height:48px;transition:border-color .15s,box-shadow .15s,background .15s}
+input::placeholder,textarea::placeholder{color:var(--faint)}
+input:hover,select:hover,textarea:hover{border-color:rgba(148,222,235,.45)}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none;border-color:var(--ring);box-shadow:0 0 0 4px rgba(94,234,212,.22);background:var(--surface-3)}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%239CBDC6' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:40px}
+select option{background:#0F2F3D}
+textarea{min-height:190px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;line-height:1.7;resize:vertical}
+input[type=number]{font-variant-numeric:tabular-nums}
+input[type=file]{padding:10px}
+.suffix{position:relative}
+.suffix input{padding-right:48px}
+.suffix span{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--faint);font-size:14px;pointer-events:none}
+[aria-invalid=true]{border-color:var(--danger)!important;box-shadow:0 0 0 4px rgba(251,113,133,.15)!important}
+.err-msg{display:flex;gap:6px;align-items:flex-start;color:var(--danger);font-size:13.5px;margin-top:6px}
+.err-msg:empty{display:none}
+.err-msg .i{width:15px;height:15px;margin-top:2px}
+.help{font-size:13px;color:var(--faint);margin-top:6px}
+
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:9px 16px;border:1px solid var(--border-strong);border-radius:999px;
+  font-size:14.5px;color:var(--fg);background:var(--surface-2);cursor:pointer;user-select:none;transition:all .15s var(--ease)}
+.chip:hover{border-color:var(--primary)}
+.chip input{appearance:none;width:18px;height:18px;min-height:0;margin:0;padding:0;border-radius:5px;border:1.5px solid var(--muted);background:transparent;display:grid;place-items:center;flex:none}
+.chip input[type=radio]{border-radius:50%}
+.chip input:checked{background:var(--primary);border-color:var(--primary)}
+.chip input:checked::after{content:"";width:9px;height:5px;border:2px solid var(--on-primary);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.chip input[type=radio]:checked::after{width:8px;height:8px;border:0;border-radius:50%;background:var(--on-primary);transform:none}
+.chip:has(input:checked){background:rgba(45,212,191,.14);border-color:var(--primary);color:var(--heading)}
+.chip:has(input:focus-visible){outline:3px solid var(--ring);outline-offset:2px}
+.chip.none{border-style:dashed}
+.chips[aria-invalid=true]{border-radius:16px;padding:8px;margin:-8px;box-shadow:0 0 0 2px var(--danger)!important;border:0!important}
+
+/* ---------- Buttons ---------- */
+button,.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:700 15px var(--font-head);min-height:48px;padding:12px 22px;
+  border-radius:12px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--fg);cursor:pointer;
+  transition:background .15s,border-color .15s,color .15s,transform .1s,box-shadow .2s;text-decoration:none;white-space:nowrap}
+button:hover,.btn:hover{border-color:var(--primary);color:var(--heading);background:var(--surface-3)}
+button:active{transform:translateY(1px)}
+button.primary{background:linear-gradient(135deg,#2DD4BF,#22D3EE);border-color:transparent;color:var(--on-primary);box-shadow:0 10px 30px -12px var(--glow)}
+button.primary:hover{background:linear-gradient(135deg,#5EEAD4,#67E8F9);color:var(--on-primary);box-shadow:0 14px 34px -12px var(--glow)}
+button.ghost{border-color:transparent;background:transparent;color:var(--primary);padding:10px 12px}
+button.ghost:hover{background:var(--surface-2);color:var(--primary-hover)}
+button.danger-ghost{border-color:transparent;background:transparent;color:var(--muted)}
+button.danger-ghost:hover{color:var(--danger);background:var(--danger-bg)}
+button:disabled{opacity:.6;cursor:progress}
+button[aria-busy=true]::before{content:"";width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.icon-btn{min-width:44px;min-height:44px;padding:0}
+
+/* Action bar: inline on desktop, sticky bottom on mobile */
+.actions{display:flex;gap:12px;align-items:center;margin-top:28px}
+.actions .grow{flex:1}
+.actions .status{font-size:14px;color:var(--muted)}
+@media (max-width:1023px){
+  .step .actions{position:fixed;left:0;right:0;bottom:0;z-index:6;margin:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    background:rgba(6,26,34,.92);backdrop-filter:blur(12px);border-top:1px solid var(--border)}
+  .step .actions .status{display:none}
+  .step .actions button.primary{flex:1}
+  .step .actions .grow:empty{display:none}
+}
+@media (max-width:479px){ .step[data-step="3"] .actions .hide-sm{display:none} }
+.status-line{font-size:14px;color:var(--muted);margin-top:12px}
+.status-line:empty{display:none}
+
+/* Error summary */
+.err-summary{margin-top:24px;border:1px solid var(--danger-border);background:var(--danger-bg);border-radius:var(--r);padding:16px 18px}
+.err-summary:focus{outline:3px solid var(--danger);outline-offset:2px}
+.err-summary h2{font-size:16px;color:var(--danger);display:flex;gap:8px;align-items:center}
+.err-summary ul{margin:8px 0 0;padding-left:28px;display:grid;gap:4px}
+.err-summary a{color:var(--fg);text-decoration:underline;text-decoration-color:var(--danger-border);text-underline-offset:3px}
+
+/* Prescription input extras */
+.ta-head{display:flex;justify-content:space-between;align-items:flex-end;gap:8px;margin-bottom:8px}
+.ta-head .label{margin:0}
+.shorthand{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.shorthand span{font-size:12.5px;color:var(--muted);background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:5px 10px}
+.shorthand b{color:var(--heading);font-family:ui-monospace,Menlo,monospace;font-weight:600;margin-right:4px}
+.upload{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px;border:1.5px dashed var(--border-strong);border-radius:var(--r);background:rgba(15,47,61,.5)}
+.upload .ico{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;background:var(--surface-3);color:var(--primary);flex:none}
+.upload .txt{flex:1;min-width:180px}
+.upload .txt b{display:block;font:600 15px var(--font-head);color:var(--heading);overflow-wrap:anywhere}
+.upload .txt span{font-size:13px;color:var(--muted)}
+.upload label.btn{cursor:pointer}
+.upload label.btn:focus-within{outline:3px solid var(--ring);outline-offset:2px}
+
+/* Medicine review cards */
+.med-list{display:grid;gap:14px}
+.med{border:1px solid var(--border);border-radius:var(--r);background:var(--surface-2);padding:16px;transition:border-color .2s;scroll-margin:90px}
+.med.has-err{border-color:var(--danger-border);box-shadow:0 0 0 1px var(--danger-border)}
+.med-top{display:flex;gap:10px;align-items:center}
+.med-num{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--surface-3);font:700 13px var(--font-head);color:var(--muted);flex:none}
+.med-top input{flex:1;min-width:0;font-weight:600}
+.match{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0 4px;font-size:14px;color:var(--muted)}
+.match b{color:var(--heading);font-weight:600}
+.err-inline{display:flex;gap:8px;align-items:flex-start;color:var(--danger);font-size:14px;margin:12px 0 4px}
+.err-inline .i{width:16px;height:16px;margin-top:3px}
+.ings{display:grid;gap:8px;margin-top:10px}
+.ing{display:flex;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px 6px 6px 14px}
+.ing span{flex:1;min-width:0;font-size:15px}
+.ing .suffix{width:130px;flex:none}
+.ing input{min-height:40px;padding:8px 12px}
+.med-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:12px}
+.med-grid label{font-size:13px}
+.comp-in{margin-top:10px;font-size:14px}
+.add-row{margin-top:14px}
+
+/* Tags */
+.tag{display:inline-flex;align-items:center;gap:5px;font:600 12px var(--font-body);line-height:1.2;padding:5px 10px;border-radius:999px;background:var(--surface-3);color:var(--muted)}
+.tag.warn{background:var(--warn-bg);color:var(--warn)}
+.tag.ok{background:var(--ok-bg);color:var(--ok)}
+.tag.danger{background:var(--danger-bg);color:var(--danger)}
+.tag.teal{background:rgba(45,212,191,.12);color:var(--primary)}
+.tag .i{width:13px;height:13px}
+
+/* ---------- Results ---------- */
+.meta{color:var(--muted);font-size:14px}
+.verdict{display:flex;gap:18px;align-items:flex-start;padding:24px;border-radius:var(--r-lg);border:1px solid;margin-top:20px}
+.verdict .vi{display:grid;place-items:center;width:52px;height:52px;border-radius:14px;background:currentColor;flex:none}
+.verdict .vi .i{width:28px;height:28px;color:var(--bg)}
+.verdict h2{font-size:24px;color:inherit;font-weight:800}
+.verdict p{margin-top:6px;color:var(--fg)}
+.danger-c{background:var(--danger-bg);border-color:var(--danger-border);color:var(--danger)}
+.warning-c{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn)}
+.info-c{background:var(--info-bg);border-color:var(--info-border);color:var(--info)}
+.ok-c{background:var(--ok-bg);border-color:var(--ok-border);color:var(--ok)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px}
+.stat b{display:block;font:800 30px var(--font-head);color:var(--heading);font-variant-numeric:tabular-nums;line-height:1.1}
+.stat span{font-size:13px;color:var(--muted)}
+.block-title{font:700 18px var(--font-head);color:var(--heading);margin:36px 0 14px;display:flex;gap:10px;align-items:center}
+.alerts{display:grid;gap:10px}
+.alert{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:var(--r);border:1px solid;font-size:15px}
+.alert .i{margin-top:2px}
+.alert div{color:var(--fg)}
+.alert .lvl{display:block;font:700 11.5px var(--font-head);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+.alert.danger-c .lvl{color:var(--danger)} .alert.warning-c .lvl{color:var(--warn)} .alert.info-c .lvl{color:var(--info)}
+.ingr{display:grid;gap:12px}
+.ingr-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px;display:grid;gap:16px;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)}
+@media (max-width:639px){ .ingr-card{grid-template-columns:minmax(0,1fr)} }
+.ingr-card h3{font-size:17px}
+.cls{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.src{font-size:14px;color:var(--muted);margin-top:10px}
+.src div{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed var(--border)}
+.src div:last-child{border:0}
+.src b{color:var(--fg);font-weight:500}
+.src span{white-space:nowrap}
+.meter .nums{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.meter .total{font:800 26px var(--font-head);color:var(--heading);font-variant-numeric:tabular-nums}
+.meter .of{color:var(--muted);font-size:14px}
+.bar{height:10px;background:var(--surface-3);border-radius:99px;overflow:hidden;margin:10px 0}
+.bar>i{display:block;height:100%;border-radius:99px}
+.note{font-size:13px;color:var(--muted);margin-top:6px}
+.sugg{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+.sugg li{display:flex;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;font-size:15px}
+.sugg li > .i{color:var(--primary);margin-top:2px}
+details summary{cursor:pointer;font-weight:500;min-height:32px;display:flex;align-items:center;color:var(--muted);font-size:13px}
+
+.callout{display:flex;gap:10px;font-size:13.5px;padding:14px;border-radius:var(--r);border:1px solid}
+.callout .i{margin-top:1px;width:18px;height:18px}
+.callout div{color:var(--fg)}
+
+/* ---------- Settings dialog ---------- */
+dialog{width:min(720px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:1px solid var(--border-strong);border-radius:var(--r-lg);background:var(--surface);color:var(--fg)}
+dialog::backdrop{background:rgba(2,10,14,.7);backdrop-filter:blur(4px)}
+.dlg-head{display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1}
+.dlg-head h2{font-size:19px;flex:1}
+.dlg-body{padding:6px 22px 24px}
+.dlg-body h3{font-size:15px;margin:22px 0 6px}
+.dlg-body .muted{color:var(--muted);font-size:14px;margin-bottom:12px}
+.dlg-actions{display:flex;gap:12px;align-items:center;margin-top:18px}
+.dlg-actions .grow{flex:1;font-size:14px;color:var(--muted)}
+
+footer{padding:24px 16px 40px;color:var(--faint);font-size:12.5px;text-align:center;max-width:860px;margin:0 auto}
+@media (max-width:1023px){ footer{padding-bottom:110px} }
+
+@media (prefers-reduced-motion: reduce){ *,*::before,*::after{transition:none!important;animation:none!important} }
+@media print{
+  :root{--bg:#fff;--surface:#fff;--surface-2:#fff;--surface-3:#eef2f4;--fg:#000;--heading:#000;--muted:#333;--faint:#555;--border:#ccc;--border-strong:#999}
+  body{background:#fff} .rail,.topbar,.mprog,.actions,.desk-tools,footer,.noprint,.eyebrow{display:none!important}
+  .app{display:block} .main{padding:0;max-width:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-pill" viewBox="0 0 24 24"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-tick" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"/><path d="M12 8v4M12 16h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 10.7l-6.1 1.9L12 18.5l-1.9-5.9L4 10.7l6.1-1.9z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+</svg>
+
+<div class="app">
+  <aside class="rail" aria-label="Progress">
+    <a class="brand" href="./"><span class="brand-mark"><svg class="i"><use href="#i-pill"/></svg></span>Rx Overlap Checker</a>
+    <p class="rail-lead">Find medicines that double up on the same ingredient, before the next dose.</p>
+    <nav aria-label="Steps"><ol class="stepper" id="stepper"></ol></nav>
+    <div class="rail-foot">
+      <div class="trust"><svg class="i"><use href="#i-lock"/></svg><span>Your details stay in this browser. Nothing is uploaded unless you turn on AI.</span></div>
+      <div class="callout danger-c"><svg class="i"><use href="#i-stop"/></svg><div><b>Took too much paracetamol?</b> Get medical help now, even if you feel fine.</div></div>
+    </div>
+  </aside>
+
+  <div>
+    <header class="topbar">
+      <a class="brand" href="./"><span class="brand-mark"><svg class="i"><use href="#i-pill"/></svg></span>Rx Checker</a>
+      <span class="spacer"></span>
+      <button type="button" class="ghost icon-btn" data-open-settings aria-label="Settings"><svg class="i"><use href="#i-sliders"/></svg></button>
+    </header>
+    <div class="mprog" aria-hidden="true">
+      <div class="row1" id="mprog_label"><b>Step 1 of 4</b> · About you</div>
+      <div class="track"><i id="mprog_bar"></i></div>
+    </div>
+
+    <main class="main">
+      <div class="desk-tools"><button type="button" class="ghost" data-open-settings><svg class="i"><use href="#i-sliders"/></svg>Settings</button></div>
+
+      <!-- STEP 1 -->
+      <section class="step" data-step="0" aria-labelledby="h-s0">
+        <p class="eyebrow">Step 1 of 4</p>
+        <h1 id="h-s0" tabindex="-1">Tell us about you</h1>
+        <p class="lead">Safe daily limits depend on age, weight and health. Fields marked <span class="req">*</span> are required.</p>
+        <div class="err-summary" role="alert" tabindex="-1" hidden></div>
+        <div class="panel">
+          <p class="section-title">Basics</p>
+          <div class="grid basics">
+            <div class="field wide"><label for="p_name">Name<span class="optional">optional</span></label><input id="p_name" autocomplete="name"></div>
+            <div class="field"><label for="p_age">Age<span class="req">*</span></label><div class="suffix"><input id="p_age" type="number" inputmode="numeric" min="0" max="120" aria-describedby="p_age-err"><span>yrs</span></div><p class="err-msg" id="p_age-err"></p></div>
+            <div class="field"><label for="p_sex">Sex<span class="req">*</span></label><select id="p_sex" aria-describedby="p_sex-err"><option value="">Select</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other / prefer not to say</option></select><p class="err-msg" id="p_sex-err"></p></div>
+            <div class="field"><label for="p_weight">Weight<span class="req">*</span></label><div class="suffix"><input id="p_weight" type="number" inputmode="decimal" min="1" max="300" aria-describedby="p_weight-err"><span>kg</span></div><p class="err-msg" id="p_weight-err"></p></div>
+            <div class="field"><label for="p_height">Height<span class="optional">optional</span></label><div class="suffix"><input id="p_height" type="number" inputmode="decimal"><span>cm</span></div></div>
+          </div>
+          <div class="divider"></div>
+          <fieldset>
+            <legend class="section-title">Health conditions<span class="req">*</span><span class="opt">Select all that apply</span></legend>
+            <div class="chips" id="conditions" aria-describedby="conditions-err"></div>
+            <p class="err-msg" id="conditions-err"></p>
+          </fieldset>
+          <div class="divider"></div>
+          <fieldset>
+            <legend class="section-title">Any medicine allergies?<span class="req">*</span></legend>
+            <div class="chips" id="allergy_choice" aria-describedby="allergy_choice-err">
+              <label class="chip"><input type="radio" name="has_allergy" value="no">No known allergies</label>
+              <label class="chip"><input type="radio" name="has_allergy" value="yes">Yes, I have allergies</label>
+            </div>
+            <p class="err-msg" id="allergy_choice-err"></p>
+            <div class="field" id="allergy_field" hidden style="margin-top:14px">
+              <label for="p_allergies">Which medicines?<span class="req">*</span></label>
+              <input id="p_allergies" placeholder="e.g. penicillin, sulfa, aspirin" aria-describedby="p_allergies-err">
+              <p class="err-msg" id="p_allergies-err"></p>
+            </div>
+          </fieldset>
+          <div class="field" style="margin-top:20px"><label for="p_notes">Anything else your doctor should know<span class="optional">optional</span></label><input id="p_notes"></div>
+        </div>
+        <div class="actions">
+          <span class="grow"></span>
+          <button type="button" class="primary" id="btn_next0">Continue<svg class="i"><use href="#i-arrow"/></svg></button>
+        </div>
+      </section>
+
+      <!-- STEP 2 -->
+      <section class="step" data-step="1" aria-labelledby="h-s1" hidden>
+        <p class="eyebrow">Step 2 of 4</p>
+        <h1 id="h-s1" tabindex="-1">What are you taking?</h1>
+        <p class="lead">Type each medicine on its own line, as the doctor wrote it, including brand name, strength and how often.</p>
+        <div class="err-summary" role="alert" tabindex="-1" hidden></div>
+        <div class="panel">
+          <div class="ta-head">
+            <label class="label" for="rx_text">Prescription<span class="req">*</span></label>
+            <button type="button" class="ghost" id="btn_example"><svg class="i"><use href="#i-spark"/></svg>Fill an example</button>
+          </div>
+          <textarea id="rx_text" placeholder="Dolo 650 1-0-1&#10;Combiflam TDS&#10;Pan-D OD before food" aria-describedby="rx_text-err rx_help"></textarea>
+          <p class="err-msg" id="rx_text-err"></p>
+          <div class="shorthand" id="rx_help"><span><b>1-0-1</b>morning &amp; night</span><span><b>OD</b>once a day</span><span><b>BD</b>twice</span><span><b>TDS</b>3 times</span><span><b>HS</b>at bedtime</span><span><b>SOS</b>if needed</span></div>
+          <div class="divider"></div>
+          <div class="upload">
+            <span class="ico"><svg class="i"><use href="#i-camera"/></svg></span>
+            <span class="txt"><b id="rx_img_name">Have a photo instead?</b><span>Printed prescriptions are read on your device. Handwriting needs the AI option.</span></span>
+            <label class="btn"><input type="file" id="rx_img" accept="image/*" class="sr-only">Choose photo</label>
+            <button type="button" id="btn_ocr">Read photo</button>
+          </div>
+          <p class="status-line" id="ocr_status" role="status"></p>
+        </div>
+        <div class="actions">
+          <button type="button" data-back="1"><svg class="i"><use href="#i-back"/></svg>Back</button>
+          <span class="grow status" id="parse_status" role="status"></span>
+          <button type="button" class="primary" id="btn_parse">Find ingredients<svg class="i"><use href="#i-arrow"/></svg></button>
+        </div>
+      </section>
+
+      <!-- STEP 3 -->
+      <section class="step" data-step="2" aria-labelledby="h-s2" hidden>
+        <p class="eyebrow">Step 3 of 4</p>
+        <h1 id="h-s2" tabindex="-1">Check what we found</h1>
+        <p class="lead">Make sure each medicine matched the right product. Every medicine needs a strength and how often it's taken.</p>
+        <div class="err-summary" role="alert" tabindex="-1" hidden></div>
+        <div class="panel">
+          <div class="med-list" id="med_list"></div>
+          <button type="button" class="ghost add-row" id="btn_add"><svg class="i"><use href="#i-plus"/></svg>Add another medicine</button>
+        </div>
+        <div class="actions">
+          <button type="button" data-back="2"><svg class="i"><use href="#i-back"/></svg>Back</button>
+          <span class="grow status" id="analyze_status" role="status"></span>
+          <button type="button" class="primary" id="btn_analyze"><svg class="i"><use href="#i-shield"/></svg>Run safety check</button>
+        </div>
+      </section>
+
+      <!-- STEP 4 -->
+      <section class="step" data-step="3" aria-labelledby="h-s3" hidden>
+        <p class="eyebrow">Step 4 of 4</p>
+        <h1 id="h-s3" tabindex="-1">Your results</h1>
+        <div id="results" aria-live="polite"></div>
+        <div class="actions">
+          <button type="button" data-back="3"><svg class="i"><use href="#i-back"/></svg>Edit</button>
+          <span class="grow"></span>
+          <button type="button" id="btn_restart" class="hide-sm"><svg class="i"><use href="#i-refresh"/></svg>New check</button>
+          <button type="button" class="primary" id="btn_print"><svg class="i"><use href="#i-print"/></svg>Print for doctor</button>
+        </div>
+      </section>
+    </main>
+    <footer>For information only. Not medical advice, and it doesn't check every drug interaction. Don't stop or change a prescribed medicine without talking to your doctor or pharmacist. Data: Indian brand list (starter set), NLM RxNorm/RxClass, openFDA.</footer>
+  </div>
+</div>
+
+<dialog id="settings_dlg" aria-labelledby="dlg-title">
+  <div class="dlg-head"><svg class="i"><use href="#i-sliders"/></svg><h2 id="dlg-title">Settings</h2><button type="button" class="ghost icon-btn" id="dlg_close" aria-label="Close settings"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="dlg-body">
+    <p class="muted" id="server_note" style="margin-top:14px"></p>
+    <h3>Indian brand list</h3>
+    <p class="muted">Lookups use <b id="brand_count">0</b> brands. Import more as a CSV with <code>brand,composition</code> columns, or the Kaggle "A-Z Medicine Dataset of India" file as-is. Imports last for this session only.</p>
+    <input type="file" id="brand_csv" accept=".csv,text/csv"><p class="status-line" id="brand_status" role="status"></p>
+    <h3>Other drug data</h3>
+    <p class="muted">Generic names fall back to NLM RxNorm / RxClass (free). Ingredients without a built-in limit show openFDA label dosing text.</p>
+    <div class="field"><label for="s_fdakey">openFDA API key<span class="optional">optional</span></label><input id="s_fdakey" type="password"></div>
+    <h3>Custom or paid data source</h3>
+    <p class="muted">Use <code>{name}</code> in the URL. It must return <code>{"matched","ingredients":[{"name","strength_mg"}],"max_daily_mg":{}}</code>.</p>
+    <div class="grid">
+      <div class="field" style="grid-column:1/-1"><label for="s_cust_url">URL template</label><input id="s_cust_url" placeholder="https://my-proxy.example/lookup?drug={name}"></div>
+      <div class="field"><label for="s_cust_hdr">Header name</label><input id="s_cust_hdr" placeholder="Authorization"></div>
+      <div class="field"><label for="s_cust_key">Header value / key</label><input id="s_cust_key" type="password" placeholder="Bearer ..."></div>
+    </div>
+    <h3>AI assistant</h3>
+    <p class="muted">Optional. Reads handwritten prescriptions and writes a review with alternatives.</p>
+    <div class="grid">
+      <div class="field"><label for="s_ai">Provider</label><select id="s_ai"><option value="none">None (rule-based only)</option><option value="server" id="opt_server" disabled>Server (keys kept on server)</option><option value="ollama">Local: Ollama</option><option value="claude">Claude API (key in browser)</option></select></div>
+      <div class="field"><label for="s_ollama_url">Ollama URL</label><input id="s_ollama_url" value="http://localhost:11434"></div>
+      <div class="field"><label for="s_ollama_model">Ollama model</label><input id="s_ollama_model" value="llama3.2"></div>
+      <div class="field"><label for="s_ollama_vmodel">Ollama vision model</label><input id="s_ollama_vmodel" value="llama3.2-vision"></div>
+      <div class="field"><label for="s_claude_key">Claude API key</label><input id="s_claude_key" type="password" placeholder="sk-ant-..."></div>
+      <div class="field"><label for="s_claude_model">Claude model</label><input id="s_claude_model" value="claude-opus-5-5"></div>
+    </div>
+    <p class="muted" style="margin-top:14px">Keys typed here stay in this browser. For anything public-facing, put keys in the server's <code>.env</code> and choose "Server". Your name is never sent to an AI provider.</p>
+    <div class="dlg-actions"><span class="grow" id="save_status" role="status"></span><button type="button" class="primary" id="btn_save">Save settings</button></div>
+  </div>
+</dialog>
+
+<script type="module">
+import { createEngine, BrandDB, parseLine, parseComposition, posNum, CONDITIONS, displayName, aiParse, aiReview } from "./engine.js";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const icon = n => `<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const storeIn = area => ({
+  get(k, d){ try{ const v = window[area].getItem(k); return v ? JSON.parse(v) : d; }catch{ return d; } },
+  set(k, v){ try{ window[area].setItem(k, JSON.stringify(v)); }catch{} },
+});
+// Settings persist; health details only last for this tab, so the next person on a shared phone doesn't see them.
+const store = storeIn("localStorage"), session = storeIn("sessionStorage");
+try{ localStorage.removeItem("rx_profile"); }catch{} // older versions kept the profile in localStorage
+const busy = (btn, on) => { btn.disabled = on; btn.setAttribute("aria-busy", on); };
+const smooth = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+
+/* ---------- Wizard ---------- */
+const STEPS = [["About you","Age, weight, health"],["Medicines","Your prescription"],["Review","Confirm each match"],["Results","Overlaps & limits"]];
+let current = 0;
+function renderStepper(){
+  $("stepper").innerHTML = STEPS.map(([t,s], i) => {
+    const done = i < current;
+    return `<li class="${done ? "done" : ""}" ${i === current ? 'aria-current="step"' : ""}>
+      <button type="button" data-goto="${i}" ${done ? "" : "disabled"}><span class="dot">${done ? icon("tick") : i + 1}</span><span><span class="t">${t}</span><span class="s">${s}</span></span></button></li>`;
+  }).join("");
+  $("mprog_label").innerHTML = `<b>Step ${current + 1} of 4</b> · ${STEPS[current][0]}`;
+  $("mprog_bar").style.width = `${(current + 1) * 25}%`;
+}
+function go(n){
+  current = n;
+  document.querySelectorAll(".step").forEach(s => s.hidden = +s.dataset.step !== n);
+  renderStepper();
+  window.scrollTo({top:0, behavior:smooth()});
+  $(`h-s${n}`).focus({preventScroll:true});
+}
+$("stepper").addEventListener("click", e => { const b = e.target.closest("[data-goto]"); if(b && !b.disabled) go(+b.dataset.goto); });
+document.querySelectorAll("[data-back]").forEach(b => b.onclick = () => go(+b.dataset.back - 1));
+
+// Validation: a specific message under each field, plus a focusable summary at the top linking to each problem.
+function fieldError(id, msg){
+  const el = $(id), m = $(id + "-err");
+  if(el){ if(msg) el.setAttribute("aria-invalid", "true"); else el.removeAttribute("aria-invalid"); }
+  if(m) m.innerHTML = msg ? icon("warn") + esc(msg) : "";
+}
+function summary(step, errs){
+  const box = document.querySelector(`[data-step="${step}"] .err-summary`);
+  if(!errs.length){ box.hidden = true; return true; }
+  box.innerHTML = `<h2>${icon("warn")}Please fix ${errs.length === 1 ? "this" : `these ${errs.length} things`} to continue</h2><ul>${errs.map(e => `<li><a href="#${e.id}">${esc(e.msg)}</a></li>`).join("")}</ul>`;
+  box.hidden = false; box.focus();
+  return false;
+}
+document.addEventListener("click", e => {
+  const a = e.target.closest(".err-summary a"); if(!a) return;
+  e.preventDefault(); const t = $(a.getAttribute("href").slice(1)); if(!t) return;
+  t.scrollIntoView({block:"center", behavior:smooth()});
+  (t.matches("input,select,textarea,button") ? t : t.querySelector("input,select,textarea"))?.focus({preventScroll:true});
+});
+
+/* ---------- Step 1: profile ---------- */
+const PFIELDS = ["p_name","p_age","p_sex","p_height","p_weight","p_allergies","p_notes"];
+$("conditions").innerHTML = CONDITIONS.map(([k,l]) => `<label class="chip"><input type="checkbox" data-cond="${k}">${l}</label>`).join("")
+  + `<label class="chip none"><input type="checkbox" id="cond_none">None of these</label>`;
+const savedP = session.get("rx_profile", {});
+PFIELDS.forEach(f => { if(savedP[f] != null) $(f).value = savedP[f]; $(f).addEventListener("change", saveProfile); });
+document.querySelectorAll("[data-cond]").forEach(c => { c.checked = !!(savedP.conds||{})[c.dataset.cond]; });
+$("cond_none").checked = !!savedP.cond_none;
+if(savedP.has_allergy) document.querySelector(`[name=has_allergy][value=${savedP.has_allergy}]`).checked = true;
+const allergyChoice = () => document.querySelector("[name=has_allergy]:checked")?.value || "";
+const syncAllergy = () => { $("allergy_field").hidden = allergyChoice() !== "yes"; };
+syncAllergy();
+// "None of these" and the listed conditions are mutually exclusive.
+$("conditions").addEventListener("change", e => {
+  if(e.target.id === "cond_none" && e.target.checked) document.querySelectorAll("[data-cond]").forEach(c => c.checked = false);
+  else if(e.target.dataset.cond && e.target.checked) $("cond_none").checked = false;
+  fieldError("conditions", ""); saveProfile();
+});
+$("allergy_choice").addEventListener("change", () => { syncAllergy(); fieldError("allergy_choice", ""); saveProfile(); });
+["p_age","p_sex","p_weight","p_allergies"].forEach(id => $(id).addEventListener("blur", () => { if($(id).getAttribute("aria-invalid") === "true") validateProfile(false); }));
+
+function saveProfile(){
+  const p = {}; PFIELDS.forEach(f => p[f] = $(f).value);
+  p.conds = {}; document.querySelectorAll("[data-cond]").forEach(c => p.conds[c.dataset.cond] = c.checked);
+  p.cond_none = $("cond_none").checked; p.has_allergy = allergyChoice();
+  session.set("rx_profile", p);
+}
+function profile(){
+  const conds = {}; document.querySelectorAll("[data-cond]").forEach(c => conds[c.dataset.cond] = c.checked);
+  const h = +$("p_height").value, w = +$("p_weight").value;
+  return { name:$("p_name").value.trim(), age:$("p_age").value === "" ? null : +$("p_age").value, sex:$("p_sex").value,
+    height:h || null, weight:w || null, bmi: h && w ? +(w / (h/100)**2).toFixed(1) : null,
+    allergies: allergyChoice() === "yes" ? $("p_allergies").value : "", notes:$("p_notes").value, conds };
+}
+function validateProfile(withSummary = true){
+  const errs = [], age = $("p_age").value, w = $("p_weight").value;
+  const check = (id, bad, msg) => { if(bad){ errs.push({id, msg}); fieldError(id, msg); } else fieldError(id, ""); };
+  check("p_age", age === "" || +age < 0 || +age > 120, age === "" ? "Enter your age" : "Enter an age between 0 and 120");
+  check("p_sex", !$("p_sex").value, "Select your sex");
+  check("p_weight", w === "" || +w <= 0 || +w > 300, w === "" ? "Enter your weight. Limits for children and lighter adults depend on it." : "Enter a weight between 1 and 300 kg");
+  check("conditions", ![...document.querySelectorAll("[data-cond]")].some(c => c.checked) && !$("cond_none").checked, "Select your conditions, or \"None of these\"");
+  check("allergy_choice", !allergyChoice(), "Tell us whether you have medicine allergies");
+  check("p_allergies", allergyChoice() === "yes" && !$("p_allergies").value.trim(), "List the medicines you're allergic to");
+  return withSummary ? summary(0, errs) : !errs.length;
+}
+$("btn_next0").onclick = () => { saveProfile(); if(validateProfile()) go(1); };
+
+/* ---------- Settings dialog ---------- */
+const SFIELDS = ["s_fdakey","s_cust_url","s_cust_hdr","s_cust_key","s_ai","s_ollama_url","s_ollama_model","s_ollama_vmodel","s_claude_key","s_claude_model"];
+const savedS = store.get("rx_settings", {});
+SFIELDS.forEach(f => { if(savedS[f] != null) $(f).value = savedS[f]; });
+function settings(){ const s = {}; SFIELDS.forEach(f => s[f] = $(f).value.trim()); return s; }
+function aiCfg(){
+  const s = settings();
+  return { provider: s.s_ai === "none" ? null : s.s_ai, claudeKey:s.s_claude_key, claudeModel:s.s_claude_model,
+    ollamaUrl:s.s_ollama_url, ollamaModel:s.s_ollama_model, ollamaVisionModel:s.s_ollama_vmodel };
+}
+document.querySelectorAll("[data-open-settings]").forEach(b => b.onclick = () => $("settings_dlg").showModal());
+$("dlg_close").onclick = () => $("settings_dlg").close();
+$("settings_dlg").addEventListener("click", e => { if(e.target === $("settings_dlg")) $("settings_dlg").close(); });
+$("btn_save").onclick = () => { store.set("rx_settings", settings()); engine = makeEngine(); $("save_status").textContent = "Saved in this browser."; };
+
+/* ---------- Engine & data ---------- */
+const brands = new BrandDB();
+function makeEngine(){
+  const s = settings();
+  return createEngine({ brands, fdaKey:s.s_fdakey, custom: s.s_cust_url ? {url:s.s_cust_url, header:s.s_cust_hdr, key:s.s_cust_key} : null });
+}
+let engine = makeEngine();
+const showBrandCount = () => $("brand_count").textContent = brands.size.toLocaleString();
+fetch("data/brands-in.csv").then(r => r.ok ? r.text() : "").then(t => { if(t) brands.addCSV(t); showBrandCount(); }).catch(() => {});
+$("brand_csv").onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  $("brand_status").textContent = "Importing…";
+  try{ const n = brands.addCSV(await f.text()); showBrandCount(); $("brand_status").textContent = `Added ${n.toLocaleString()} brands.`; }
+  catch(err){ $("brand_status").textContent = "Import failed: " + err.message; }
+};
+// When served by server.js, offer the server's AI so keys never touch the browser.
+fetch("/v1/config").then(r => r.ok ? r.json() : null).then(c => {
+  if(!c) return;
+  if(c.ui_ai_proxy){ $("opt_server").disabled = false; $("opt_server").textContent = `Server (${c.ai}, keys kept on server)`; if(!savedS.s_ai) $("s_ai").value = "server"; }
+  $("server_note").textContent = `Connected to server. Server AI: ${c.ai || "off"}. Server brand list: ${c.brands} brands.`;
+}).catch(() => {});
+
+/* ---------- Step 2: prescription ---------- */
+$("btn_example").onclick = () => { $("rx_text").value = "Dolo 650 1-0-1\nCombiflam 1-1-1\nZerodol-P BD\nPan 40 OD\nPan-D OD before food\nMontair LC HS\nAllegra 120 OD"; fieldError("rx_text", ""); $("rx_text").focus(); };
+$("rx_text").addEventListener("input", () => { if($("rx_text").value.trim()) fieldError("rx_text", ""); });
+$("rx_img").onchange = e => { $("rx_img_name").textContent = e.target.files[0]?.name || "Have a photo instead?"; };
+
+let tesseractLoaded = null;
+const loadTesseract = () => tesseractLoaded ||= new Promise((res, rej) => {
+  const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+  sc.onload = res; sc.onerror = () => rej(new Error("could not load OCR engine")); document.head.appendChild(sc);
+});
+const fileToB64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(f); });
+$("btn_ocr").onclick = async () => {
+  const f = $("rx_img").files[0]; if(!f){ $("ocr_status").textContent = "Choose a photo first."; return; }
+  const st = $("ocr_status"), cfg = aiCfg(), btn = $("btn_ocr"); busy(btn, true);
+  try{
+    if(cfg.provider){
+      st.textContent = "AI is reading the photo…";
+      const list = await aiParse(cfg, {image:{data: await fileToB64(f), type: f.type || "image/jpeg"}});
+      $("rx_text").value = list.map(m => m.raw).join("\n");
+      st.textContent = "Done. Check the text above, then continue.";
+    } else {
+      st.textContent = "Loading on-device reader…"; await loadTesseract();
+      const { data } = await Tesseract.recognize(f, "eng", { logger: m => { if(m.status==="recognizing text") st.textContent = `Reading… ${Math.round(m.progress*100)}%`; } });
+      $("rx_text").value = data.text.split("\n").map(l=>l.trim()).filter(Boolean).join("\n");
+      st.textContent = "Done. Fix any reading mistakes above, then continue.";
+    }
+    fieldError("rx_text", "");
+  }catch(e){ st.textContent = "Couldn't read the photo: " + e.message; }
+  finally{ busy(btn, false); }
+};
+
+let meds = [], showMedErrors = false;
+$("btn_parse").onclick = async () => {
+  const text = $("rx_text").value.trim();
+  const lines = text.split(/\n+/).map(l => l.trim()).filter(l => l && /[a-z]/i.test(l));
+  if(!lines.length){ const msg = "Enter at least one medicine, one per line"; fieldError("rx_text", msg); summary(1, [{id:"rx_text", msg}]); return; }
+  summary(1, []);
+  const btn = $("btn_parse"); busy(btn, true); $("parse_status").textContent = "Finding ingredients…";
+  let parsed; const cfg = aiCfg();
+  if(cfg.provider){
+    try{ $("parse_status").textContent = "AI is reading the prescription…"; parsed = await aiParse(cfg, {text}); }
+    catch{ $("parse_status").textContent = "AI unavailable, using the built-in reader."; }
+  }
+  parsed ||= lines.map(parseLine);
+  const prev = new Map(meds.filter(m => m.ings?.length).map(m => [m.raw, m])), fresh = [];
+  meds = parsed.map((p, i) => { const old = prev.get(p.raw); if(old) return {...old, ings:old.ings.map(g => ({...g}))}; fresh.push(i); return {...p, ings:[]}; });
+  showMedErrors = false;
+  await Promise.all(fresh.map(i => resolveMed(i, meds[i], false)));
+  renderMeds(); summary(2, []);
+  busy(btn, false); $("parse_status").textContent = "";
+  go(2);
+};
+
+/* ---------- Step 3: review ---------- */
+const SRC = {"brand-db":["India brand list","teal"], rxnorm:["US database · verify","warn"], custom:["Custom source","teal"], typed:["As typed",""], ai:["AI · verify","warn"], manual:["Entered by you",""]};
+function medProblems(m){
+  const p = [];
+  if(!String(m.raw || "").trim()) p.push("Enter the medicine name");
+  else if(!m.ings?.length) p.push("Not recognised. Type its composition from the strip");
+  else if(m.ings.some(g => !posNum(g.mg))) p.push("Enter the strength (mg) of each ingredient");
+  if(!posNum(m.units)) p.push("Enter tablets per dose");
+  if(!posNum(m.perDay) || (m.guessedFreq && !m.prn)) p.push("Enter how many times a day it's taken");
+  return p;
+}
+const cardErr = i => { const p = showMedErrors ? medProblems(meds[i]) : []; return p.length ? `<p class="err-msg">${icon("warn")}${esc(p.join(". "))}.</p>` : ""; };
+function renderMeds(){
+  $("med_list").innerHTML = meds.map((m,i) => {
+    const src = SRC[m.source], freqMissing = m.guessedFreq && !m.prn;
+    return `<article class="med ${showMedErrors && medProblems(m).length ? "has-err" : ""}" id="med-${i}" aria-label="Medicine ${i+1}">
+      <div class="med-top"><span class="med-num">${i+1}</span>
+        <input data-i="${i}" data-f="raw" value="${esc(m.raw)}" aria-label="Medicine ${i+1} as written" placeholder="Medicine name and strength">
+        <button type="button" class="danger-ghost icon-btn" data-del="${i}" aria-label="Remove ${esc(m.raw || "this medicine")}">${icon("x")}</button></div>
+      ${m.error ? `<p class="err-inline">${icon("warn")}${esc(m.error)}</p>`
+        : m.matched ? `<p class="match">Matched as <b>${esc(m.matched)}</b>${src ? `<span class="tag ${src[1]}">${src[0]}</span>` : ""}</p>` : ""}
+      ${m.ings?.length ? `<div class="ings">${m.ings.map((g,j) => `<div class="ing"><span>${esc(displayName(g.name))}</span>
+        <div class="suffix"><input type="number" step="any" inputmode="decimal" data-i="${i}" data-g="${j}" value="${g.mg ?? ""}" ${showMedErrors && g.mg == null ? 'aria-invalid="true"' : ""} placeholder="${g.choices?.length ? g.choices.join(" / ") : "Strength"}" aria-label="${esc(displayName(g.name))} strength in mg"><span>mg</span></div></div>`).join("")}</div>` : ""}
+      <input class="comp-in" data-i="${i}" data-f="comp" placeholder="${m.ings?.length ? "Wrong ingredients? Type the composition from the strip" : "Composition from the strip, e.g. paracetamol 325 + ibuprofen 400"}" aria-label="Composition for medicine ${i+1}">
+      <div class="med-grid">
+        <div class="field"><label for="u-${i}">Tablets per dose<span class="req">*</span></label><input id="u-${i}" type="number" step="any" inputmode="decimal" min="0" data-i="${i}" data-f="units" value="${m.units ?? ""}" ${showMedErrors && !(m.units > 0) ? 'aria-invalid="true"' : ""}></div>
+        <div class="field"><label for="d-${i}">Times a day<span class="req">*</span></label><input id="d-${i}" type="number" step="any" inputmode="decimal" min="0" data-i="${i}" data-f="perDay" value="${freqMissing || m.perDay == null ? "" : m.perDay}" ${showMedErrors && (freqMissing || !(m.perDay > 0)) ? 'aria-invalid="true"' : ""} placeholder="${freqMissing ? "Not on prescription" : ""}">
+          ${m.prn ? '<p class="help">As needed: counted at the most you might take.</p>' : ""}</div>
+      </div>
+      <div id="err-${i}">${cardErr(i)}</div></article>`;
+  }).join("") || `<p class="lead">No medicines yet. Add one below.</p>`;
+}
+function refreshCardErr(i){ const c = $(`med-${i}`); if(!c) return; $(`err-${i}`).innerHTML = cardErr(i); c.classList.toggle("has-err", showMedErrors && medProblems(meds[i]).length > 0); }
+$("med_list").addEventListener("change", e => {
+  const t = e.target, i = +t.dataset.i; if(isNaN(i)) return;
+  if(t.value !== "" && +t.value > 0) t.removeAttribute("aria-invalid");
+  if(t.dataset.g != null){ meds[i].ings[+t.dataset.g].mg = t.value === "" ? null : +t.value; refreshCardErr(i); }
+  else if(t.dataset.f === "raw") resolveMed(i, parseLine(t.value));
+  else if(t.dataset.f === "comp"){ const ings = parseComposition(t.value); if(ings.length){ meds[i] = {...meds[i], ings, matched:ings.map(g => displayName(g.name)).join(" + "), source:"manual", error:null}; renderMeds(); } }
+  else{ meds[i][t.dataset.f] = t.value === "" ? null : +t.value; if(t.dataset.f === "perDay") meds[i].guessedFreq = false; refreshCardErr(i); }
+});
+$("med_list").addEventListener("click", e => { const d = e.target.closest("[data-del]")?.dataset.del; if(d != null){ meds.splice(+d,1); renderMeds(); } });
+$("btn_add").onclick = () => { meds.push({raw:"", units:1, perDay:null, ings:[], guessedFreq:true}); renderMeds(); $(`med-${meds.length-1}`).querySelector('[data-f="raw"]').focus(); };
+
+async function resolveMed(i, p, rerender = true){
+  const entry = { ...p, ings:[], matched:"Looking up…", source:null, error:null };
+  meds[i] = entry; if(rerender) renderMeds();
+  let found;
+  try{ found = { ...(await engine.lookup(p)), error:null }; }
+  catch(e){ found = p.aiComposition ? { matched:p.aiComposition, source:"ai", ings:parseComposition(p.aiComposition), error:null } : { matched:"", error:e.message }; }
+  const k = meds.indexOf(entry); if(k < 0) return; // removed or renamed again while looking up
+  meds[k] = { ...entry, ...found };
+  if(rerender) renderMeds();
+}
+
+$("btn_analyze").onclick = async () => {
+  showMedErrors = true;
+  const errs = meds.flatMap((m,i) => { const p = medProblems(m); return p.length ? [{id:`med-${i}`, msg:`Medicine ${i+1}${m.raw ? ` (${m.raw})` : ""}: ${p[0]}`}] : []; });
+  if(!meds.length) errs.push({id:"btn_add", msg:"Add at least one medicine"});
+  renderMeds();
+  if(!summary(2, errs)) return;
+  if(!validateProfile(false)){ go(0); validateProfile(); return; } // details changed since step 1
+  const btn = $("btn_analyze"); busy(btn, true); $("analyze_status").textContent = "Checking…";
+  try{
+    saveProfile();
+    const P = profile();
+    const report = await engine.analyze(meds, P);
+    render(report, P); go(3);
+    const cfg = aiCfg();
+    if(cfg.provider) runAIReview(cfg, P, report);
+  } finally { busy(btn, false); $("analyze_status").textContent = ""; }
+};
+$("btn_restart").onclick = () => { meds = []; $("rx_text").value = ""; $("results").innerHTML = ""; go(1); };
+$("btn_print").onclick = () => window.print();
+
+/* ---------- Step 4: results ---------- */
+const STATUS = {
+  danger:    { c:"danger-c",  i:"stop",  t:"Problems found",    d:"At least one combination needs a doctor's or pharmacist's attention before the next dose." },
+  incomplete:{ c:"warning-c", i:"help",  t:"Check incomplete",  d:"Some medicines couldn't be fully checked. Go back and fill in what's missing." },
+  warning:   { c:"warning-c", i:"warn",  t:"Worth reviewing",   d:"Nothing is over a limit, but some medicines overlap. Mention these to your doctor." },
+  ok:        { c:"ok-c",      i:"check", t:"No overlaps found", d:"None of these medicines share an ingredient or go over typical daily limits." },
+};
+const LEVEL = { danger:{c:"danger-c", i:"stop", l:"Urgent"}, warning:{c:"warning-c", i:"warn", l:"Review"}, info:{c:"info-c", i:"info", l:"Note"} };
+
+function render(r, P){
+  const who = [P.name, P.age != null && P.age + " yrs", P.sex, P.weight && P.weight + " kg", P.bmi && "BMI " + P.bmi].filter(Boolean).join(" · ");
+  const S = STATUS[r.status] || STATUS.warning, nIssues = r.alerts.filter(a => a.level !== "info").length;
+  let h = `<p class="meta">${who ? esc(who) + " · " : ""}Checked ${new Date().toLocaleDateString("en-IN", {day:"numeric", month:"short", year:"numeric"})}</p>`;
+  h += `<div class="verdict ${S.c}" role="status"><span class="vi">${icon(S.i)}</span><div><h2>${S.t}</h2><p>${S.d}</p></div></div>`;
+  h += `<div class="stats"><div class="stat"><b>${r.medicines.length}</b><span>medicines</span></div><div class="stat"><b>${r.ingredients.length}</b><span>ingredients</span></div><div class="stat"><b>${nIssues}</b><span>${nIssues === 1 ? "issue" : "issues"}</span></div></div>`;
+  if(r.alerts.length) h += `<h2 class="block-title">What we found</h2><div class="alerts">${r.alerts.map(a => {
+    const L = a.code === "incomplete" ? {c:"warning-c", i:"help", l:"Incomplete"} : LEVEL[a.level];
+    return `<div class="alert ${L.c}">${icon(L.i)}<div><span class="lvl">${L.l}</span>${esc(a.text)}</div></div>`; }).join("")}</div>`;
+
+  const ratio = e => e.reference_max_mg_per_day ? e.mg_per_day / e.reference_max_mg_per_day : -1;
+  h += `<h2 class="block-title">Daily total per ingredient</h2><div class="ingr">`;
+  for(const e of [...r.ingredients].sort((a,b) => ratio(b) - ratio(a))){
+    const max = e.reference_max_mg_per_day, pct = max ? Math.min(100, e.mg_per_day / max * 100) : 0;
+    const st = !max ? null : e.mg_per_day > max ? ["danger","stop","Over limit"] : pct >= 80 && e.sources.length > 1 ? ["warn","warn","Near limit"] : ["ok","check","Within limit"];
+    const col = !st ? "var(--faint)" : st[0] === "danger" ? "var(--danger)" : st[0] === "warn" ? "var(--warn)" : "var(--ok)";
+    h += `<div class="ingr-card"><div><h3>${esc(e.display)}</h3>${e.classes.length ? `<div class="cls">${e.classes.slice(0,2).map(c => `<span class="tag">${esc(c)}</span>`).join("")}</div>` : ""}
+        <div class="src">${e.sources.map(s => `<div><b>${esc(s.medicine)}</b><span>${s.mg_per_day != null ? Math.round(s.mg_per_day) + " mg/day" : "mg unknown"}</span></div>`).join("")}</div></div>
+      <div class="meter"><div class="nums"><span class="total">${e.total_incomplete ? "≥ " : ""}${e.mg_per_day} mg</span><span class="of">${max ? `of ${max} mg/day limit` : "no reference limit"}</span></div>
+        ${max ? `<div class="bar" role="presentation"><i style="width:${pct}%;background:${col}"></i></div>` : ""}
+        ${st ? `<span class="tag ${st[0]}">${icon(st[1])}${st[2]}</span>` : ""}
+        ${e.limit_notes.length ? `<p class="note">${e.limit_notes.map(esc).join(" ")}</p>` : ""}
+        ${e.label_excerpt ? `<details><summary>FDA label dosing</summary><p class="note">${esc(e.label_excerpt)}…</p></details>` : ""}</div></div>`;
+  }
+  h += `</div>`;
+  if(r.suggestions.length) h += `<h2 class="block-title">Ask your doctor or pharmacist</h2><ul class="sugg">${r.suggestions.map(s => `<li>${icon("msg")}<span>${esc(s)}</span></li>`).join("")}</ul>`;
+  h += `<div id="ai_review"></div><p class="note" style="margin-top:24px">Limits are typical adult maximums from product labels. Your doctor may have chosen a different dose on purpose. As-needed medicines are counted at the most you might take.</p>`;
+  $("results").innerHTML = h;
+}
+
+async function runAIReview(cfg, P, report){
+  const box = $("ai_review"); box.innerHTML = `<h2 class="block-title">AI review</h2><p class="note">Thinking…</p>`;
+  const patient = { age:P.age, sex:P.sex, height_cm:P.height, weight_kg:P.weight, bmi:P.bmi,
+    conditions:Object.keys(P.conds).filter(k => P.conds[k]), allergies:P.allergies, notes:P.notes }; // name deliberately omitted
+  try{
+    const r = await aiReview(cfg, patient, report);
+    const sev = {high:"danger", medium:"warning", low:"info"};
+    box.innerHTML = `<h2 class="block-title">AI review <span class="tag teal">${esc(cfg.provider)}</span></h2><p>${esc(r.summary)}</p>
+      <div class="alerts" style="margin-top:12px">${(r.concerns||[]).map(c => { const L = LEVEL[sev[c.severity]] || LEVEL.info; return `<div class="alert ${L.c}">${icon(L.i)}<div><b>${esc(c.issue)}</b><br>${esc(c.why)}</div></div>`; }).join("")}</div>
+      ${(r.alternatives||[]).length ? `<h2 class="block-title">Alternatives to discuss</h2><ul class="sugg">${r.alternatives.map(a => `<li>${icon("refresh")}<span>Instead of <b>${esc(a.instead_of)}</b>: ${esc(a.consider)}. <span class="note">${esc(a.reason)}</span></span></li>`).join("")}</ul>` : ""}
+      ${(r.questions_for_doctor||[]).length ? `<h2 class="block-title">Questions for your doctor</h2><ul class="sugg">${r.questions_for_doctor.map(q => `<li>${icon("msg")}<span>${esc(q)}</span></li>`).join("")}</ul>` : ""}
+      <p class="note" style="margin-top:12px">AI output can be wrong. Use it to start a conversation with your pharmacist.</p>`;
+  }catch(e){ box.innerHTML = `<h2 class="block-title">AI review</h2><p class="note">Unavailable: ${esc(e.message)}</p>`; }
+}
+
+renderStepper();
+</script>
+</body>
+</html>
