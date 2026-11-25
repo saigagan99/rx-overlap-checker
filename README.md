@@ -26,7 +26,7 @@ It works as a **consumer web app** and as a **REST API** that hospitals and tele
 Requires Node.js 20 or newer. No `npm install` is needed; there are no dependencies.
 
 ```bash
-git clone https://github.com/saigagan99-sys/rx-overlap-checker.git
+git clone https://github.com/saigagan99/rx-overlap-checker.git
 cd rx-overlap-checker
 cp .env.example .env    # optional: add keys
 npm start               # http://localhost:8787
