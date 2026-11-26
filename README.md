@@ -117,11 +117,21 @@ location / {
 
 The AI rate limit is kept in memory per process. Use a shared store if you run several instances.
 
-## Data sources
+## Data sources and costs
 
-- Indian brand compositions: starter list in `data/`. Extend it with your own or a licensed dataset.
-- [NLM RxNorm / RxClass](https://lhncbc.nlm.nih.gov/RxNav/) for generic names and WHO ATC drug classes (free, no key).
-- [openFDA](https://open.fda.gov/) drug labels for dosing text where no built-in limit exists.
+Prices checked November 2026. Paid figures marked "reported" come from third-party estimates, because the vendors don't publish prices.
+
+| Source | Gives | Cost | In the app |
+|---|---|---|---|
+| Built-in Indian brand list (`data/`) | Exact composition for common brands | Free | On by default |
+| [NLM RxNorm / RxClass](https://lhncbc.nlm.nih.gov/RxNav/) | Generic names, WHO ATC drug classes | Free, no key | On by default (checked fallback) |
+| [openFDA](https://open.fda.gov/apis/authentication/) | US label dosing text | Free; key optional (1,000 → 120,000 requests/day) | On; add key in Settings or `OPENFDA_API_KEY` |
+| [ABDM Drug Registry](https://drugregistry.abdm.gov.in) (Govt. of India) | 123,000+ Indian brands with composition and same-composition alternatives | Free; requires ABDM integrator registration ([sandbox](https://sandbox.abdm.gov.in)) | Connect through an adapter (below) |
+| [DrugSetu](https://drugsetu.com/pricing/) | Indian brands, composition, MRP; Growth adds classes and interaction notes | ₹1,499/mo (50k requests) or ₹2,599/mo (100k), + 18% GST; 7-day trial | Connect through an adapter |
+| [DrugBank](https://go.drugbank.com/pricing/) | Global drug data, duplicate-ingredient and interaction checks (US/CA/EU products) | Usage-based quote; reported ~US$10k–50k+/yr for startups; free academic (non-commercial) | Connect through an adapter |
+| FDB, Medi-Span, Micromedex | Hospital-grade interaction databases | Enterprise contracts; reported ~US$25k–250k+/yr | Connect through an adapter |
+
+**Connecting a provider:** each one has its own response format and login. Run a small adapter on your server that calls the provider with your key and returns `{"matched": "...", "ingredients": [{"name": "paracetamol", "strength_mg": 325}]}`. Then set its URL in Settings → *Connect a provider*, or as `CUSTOM_SOURCE_URL` / `_HEADER` / `_KEY` in `.env`. It's tried right after the built-in brand list.
 
 ## Limitations
 

@@ -288,6 +288,14 @@ dialog::backdrop{background:rgba(2,10,14,.7);backdrop-filter:blur(4px)}
 .dlg-body{padding:6px 22px 24px}
 .dlg-body h3{font-size:15px;margin:22px 0 6px}
 .dlg-body .muted{color:var(--muted);font-size:14px;margin-bottom:12px}
+.providers{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.prov{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.prov-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.prov-top b{font:600 14.5px var(--font-head);color:var(--heading)}
+.prov p{font-size:13px;color:var(--muted);flex:1}
+.prov-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.prov-foot a{font-size:13px;font-weight:600;text-decoration:none;min-height:32px;display:inline-flex;align-items:center}
+.prov-foot a:hover{text-decoration:underline}
 .dlg-actions{display:flex;gap:12px;align-items:center;margin-top:18px}
 .dlg-actions .grow{flex:1;font-size:14px;color:var(--muted)}
 
@@ -461,16 +469,20 @@ footer{padding:24px 16px 40px;color:var(--faint);font-size:12.5px;text-align:cen
   <div class="dlg-head"><svg class="i"><use href="#i-sliders"/></svg><h2 id="dlg-title">Settings</h2><button type="button" class="ghost icon-btn" id="dlg_close" aria-label="Close settings"><svg class="i"><use href="#i-x"/></svg></button></div>
   <div class="dlg-body">
     <p class="muted" id="server_note" style="margin-top:14px"></p>
+    <h3>Drug data sources</h3>
+    <p class="muted">Where ingredient and dosing data comes from. Free sources work out of the box. Paid or registered ones connect below.</p>
+    <div class="providers" id="providers"></div>
+
     <h3>Indian brand list</h3>
     <p class="muted">Lookups use <b id="brand_count">0</b> brands. Import more as a CSV with <code>brand,composition</code> columns, or the Kaggle "A-Z Medicine Dataset of India" file as-is. Imports last for this session only.</p>
     <input type="file" id="brand_csv" accept=".csv,text/csv"><p class="status-line" id="brand_status" role="status"></p>
-    <h3>Other drug data</h3>
-    <p class="muted">Generic names fall back to NLM RxNorm / RxClass (free). Ingredients without a built-in limit show openFDA label dosing text.</p>
+    <h3>openFDA key</h3>
+    <p class="muted">Free from open.fda.gov. Raises the limit from 1,000 to 120,000 requests a day.</p>
     <div class="field"><label for="s_fdakey">openFDA API key<span class="optional">optional</span></label><input id="s_fdakey" type="password"></div>
-    <h3>Custom or paid data source</h3>
-    <p class="muted">Use <code>{name}</code> in the URL. It must return <code>{"matched","ingredients":[{"name","strength_mg"}],"max_daily_mg":{}}</code>.</p>
+    <h3>Connect a provider (ABDM Drug Registry, DrugSetu, DrugBank…)</h3>
+    <p class="muted">Each provider has its own format, so point this at a small adapter on your server that calls the provider with your key and returns <code>{"matched","ingredients":[{"name","strength_mg"}]}</code>. Use <code>{name}</code> where the medicine name goes. Tried before the US database.</p>
     <div class="grid">
-      <div class="field" style="grid-column:1/-1"><label for="s_cust_url">URL template</label><input id="s_cust_url" placeholder="https://my-proxy.example/lookup?drug={name}"></div>
+      <div class="field" style="grid-column:1/-1"><label for="s_cust_url">Lookup URL</label><input id="s_cust_url" placeholder="https://my-server.example/lookup?drug={name}"></div>
       <div class="field"><label for="s_cust_hdr">Header name</label><input id="s_cust_hdr" placeholder="Authorization"></div>
       <div class="field"><label for="s_cust_key">Header value / key</label><input id="s_cust_key" type="password" placeholder="Bearer ..."></div>
     </div>
@@ -624,9 +636,39 @@ $("brand_csv").onchange = async e => {
   try{ const n = brands.addCSV(await f.text()); showBrandCount(); $("brand_status").textContent = `Added ${n.toLocaleString()} brands.`; }
   catch(err){ $("brand_status").textContent = "Import failed: " + err.message; }
 };
+// Drug data sources: what each gives, what it costs (checked Nov 2026), and whether it's connected.
+let serverCfg = null;
+const PROVIDERS = [
+  { name:"Built-in Indian brand list", cost:"Free", gives:"Exact composition for common Indian brands. Add more by importing a CSV.",
+    status:() => ["on", `On · ${brands.size.toLocaleString()} brands`] },
+  { name:"NLM RxNorm & RxClass", cost:"Free · no key", gives:"Generic names and WHO drug classes. Used as a checked fallback, since it doesn't know Indian brands.",
+    status:() => ["on", "On"], link:"https://lhncbc.nlm.nih.gov/RxNav/" },
+  { name:"openFDA", cost:"Free · key optional", gives:"Official label dosing text for ingredients without a built-in limit.",
+    status:() => ["on", settings().s_fdakey || serverCfg?.openfda_key ? "On · key added" : "On · no key (1,000/day)"], link:"https://open.fda.gov/apis/authentication/" },
+  { name:"ABDM Drug Registry (Govt. of India)", cost:"Free · registration", gives:"123,000+ Indian brands with exact composition and same-composition alternatives. Needs ABDM integrator registration (sandbox first).",
+    status:customStatus, link:"https://sandbox.abdm.gov.in", linkText:"Register" },
+  { name:"DrugSetu (India)", cost:"₹1,499–2,599/mo + GST", gives:"Indian brands, composition, MRP and pack details. Growth plan adds drug classes and interaction notes. 7-day trial.",
+    status:customStatus, link:"https://drugsetu.com/pricing/", linkText:"Pricing" },
+  { name:"DrugBank (global)", cost:"Quote · ~US$10k+/yr", gives:"Global drug data with duplicate-ingredient and interaction checks. Products cover US, Canada and EU, not Indian brands.",
+    status:customStatus, link:"https://go.drugbank.com/pricing/", linkText:"Pricing" },
+  { name:"FDB · Medi-Span · Micromedex", cost:"Enterprise · ~US$25k–250k/yr", gives:"Hospital-grade interaction databases, sold through sales contracts.",
+    status:() => ["off", "Contract only"] },
+];
+function customStatus(){ return settings().s_cust_url || serverCfg?.custom_source ? ["on", "A provider is connected"] : ["off", "Not connected"]; }
+function renderProviders(){
+  $("providers").innerHTML = PROVIDERS.map(p => { const [st, label] = p.status(); return `<div class="prov">
+    <div class="prov-top"><b>${esc(p.name)}</b><span class="tag">${esc(p.cost)}</span></div>
+    <p>${esc(p.gives)}</p>
+    <div class="prov-foot"><span class="tag ${st === "on" ? "ok" : ""}">${st === "on" ? icon("check") : ""}${esc(label)}</span>
+      ${p.link ? `<a href="${p.link}" target="_blank" rel="noopener">${esc(p.linkText || "Docs")} ↗</a>` : ""}</div></div>`; }).join("");
+}
+document.querySelectorAll("[data-open-settings]").forEach(b => b.addEventListener("click", renderProviders));
+["s_fdakey","s_cust_url"].forEach(id => $(id).addEventListener("input", renderProviders));
+
 // When served by server.js, offer the server's AI so keys never touch the browser.
 fetch("/v1/config").then(r => r.ok ? r.json() : null).then(c => {
   if(!c) return;
+  serverCfg = c;
   if(c.ui_ai_proxy){ $("opt_server").disabled = false; $("opt_server").textContent = `Server (${c.ai}, keys kept on server)`; if(!savedS.s_ai) $("s_ai").value = "server"; }
   $("server_note").textContent = `Connected to server. Server AI: ${c.ai || "off"}. Server brand list: ${c.brands} brands.`;
 }).catch(() => {});
