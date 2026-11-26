@@ -74,6 +74,18 @@ test("values that aren't positive numbers are never counted as 1", async () => {
   assert.equal(r.status, "danger");
 });
 
+test("clinical review: low-dose aspirin, statins in pregnancy, child doses, note lines", async () => {
+  const aspirin75 = med("Ecosprin 75", [{name:"aspirin", mg:75}], 1);
+  for(const c of ["heart", "kidney", "pregnant"]) assert.equal((await check([aspirin75], { conds:{[c]:true} })).status, "ok", c); // cardioprotective dose
+  assert.equal((await check([med("Disprin", [{name:"aspirin", mg:350}], 3)], { conds:{kidney:true} })).status, "warning"); // anti-inflammatory dose
+  assert.equal((await check([aspirin75], { conds:{thinners:true} })).status, "warning"); // bleeding risk at any dose
+  assert.equal((await check([med("Atorva 10", [{name:"atorvastatin", mg:10}], 1)], { sex:"female", conds:{pregnant:true} })).status, "warning");
+  assert.equal((await check([med("Cetzine", [{name:"cetirizine", mg:10}], 1)], { age:5, weight:18 })).status, "warning");
+  const notes = [med("Dr. R. Sharma MBBS", []), med("Brufen 400 TDS", [{name:"ibuprofen", mg:400}], 3), med("Review after 5 days", [])];
+  assert.equal((await check(notes)).status, "ok");
+  assert.equal((await check([med("Xylofen 200 BD", [])])).status, "incomplete"); // an unknown medicine still is
+});
+
 test("offline drug-group lookup is reported, built-in groups still work", async () => {
   const r = await check([med("Combiflam", [{name:"ibuprofen", mg:400}], 3), med("Zerodol", [{name:"aceclofenac", mg:100}], 2)]);
   assert.equal(r.class_check_partial, true);

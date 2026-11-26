@@ -62,6 +62,11 @@ export const CONDITIONS = [
 // Positive number or null. "650" counts; "650mg", "four", 0 and NaN don't, so bad input becomes "incomplete" instead of a wrong total.
 export const posNum = v => { const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN; return Number.isFinite(n) && n > 0 ? n : null; };
 
+// A prescription line that's a header or advice, not a medicine. Only used for lines no source could identify,
+// so "Rx: Dolo 650" still counts as a medicine.
+const NOTE_LINE = /^\s*(dr|doctor|rx|date|name|patient|pt|age|sex|diagnosis|dx|c\/o|complaints?|advice|advised|review|follow[\s-]?up|next visit|signature|sign|reg)\b|\b(mbbs|frcp|mrcp|dnb|clinic|hospital)\b/i;
+export const isNoteLine = raw => NOTE_LINE.test(String(raw));
+
 export function canon(n){
   n = String(n).toLowerCase().replace(/\s+/g," ").trim();
   if(ALIAS[n]) return ALIAS[n];
@@ -287,7 +292,7 @@ export function createEngine({ brands = new BrandDB(), custom = null, fdaKey = "
   // meds: [{raw, units, perDay, prn, ings:[{name, mg, rxcui?}], customMax?}]   P: {age, sex, weight, height, conds:{}, allergies}
   async function analyze(meds, P, { labels = true } = {}){
     P = { conds:{}, ...P };
-    const listed = meds.filter(m => String(m.raw || "").trim());
+    const listed = meds.filter(m => String(m.raw || "").trim() && (m.ings?.length || !isNoteLine(m.raw)));
     const valid = listed.filter(m => m.ings?.length);
     const byIng = new Map(); const customMax = {};
     for(const m of valid){
@@ -332,20 +337,26 @@ export function createEngine({ brands = new BrandDB(), custom = null, fdaKey = "
 
     const nsaids = ings.filter(e => NSAIDS.includes(e.name)).map(e => e.name);
     const anyN = nsaids.length > 0;
+    // Low-dose aspirin (up to 325 mg/day) is taken to protect the heart, so it doesn't trigger the anti-inflammatory-dose warnings below.
+    const nsaidsAntiInflam = nsaids.filter(n => n !== "aspirin" || byIng.get("aspirin").total > 325);
     const flag = (t, level = "info") => alerts.push({level, code:"patient_factor", ingredients:[], text:t});
-    if(anyN && P.conds.kidney) flag(`NSAIDs (${nsaids.join(", ")}) can worsen kidney function. Ask whether they're needed.`, "warning");
+    if(nsaidsAntiInflam.length && P.conds.kidney) flag(`NSAIDs (${nsaidsAntiInflam.join(", ")}) can worsen kidney function. Ask whether they're needed.`, "warning");
     if(anyN && P.conds.ulcer) flag("NSAIDs and aspirin raise the risk of stomach bleeding with ulcer or GI-bleed history.", "warning");
     if(anyN && P.conds.thinners) flag("NSAIDs or aspirin with a blood thinner significantly raises bleeding risk.", "warning");
-    if(anyN && P.conds.heart) flag("NSAIDs can raise blood pressure and strain the heart.");
+    if(nsaidsAntiInflam.length && P.conds.heart) flag("NSAIDs can raise blood pressure and strain the heart.");
     if(anyN && P.conds.asthma) flag("Some people with asthma react badly to aspirin/NSAIDs.");
-    if(anyN && P.conds.pregnant) flag("NSAIDs are generally avoided from 20 weeks of pregnancy onward unless a doctor directs it.", "warning");
+    if(nsaidsAntiInflam.length && P.conds.pregnant) flag("NSAIDs are generally avoided from 20 weeks of pregnancy onward unless a doctor directs it.", "warning");
     if(has("nimesulide") && P.age != null && P.age < 12) flag("Nimesulide is banned in India for children under 12.", "danger");
     if(P.conds.pregnant && ["lisinopril","enalapril","ramipril","losartan","telmisartan","olmesartan","valsartan"].some(has)) flag("ACE inhibitors and ARBs are not used in pregnancy.", "warning");
-    if(P.conds.pregnant && ["atorvastatin","rosuvastatin","simvastatin"].some(has)) flag("Statins are usually stopped during pregnancy.");
+    if(P.conds.pregnant && ["atorvastatin","rosuvastatin","simvastatin"].some(has)) flag("Statins are usually stopped during pregnancy. Check with the prescriber.", "warning");
     if(P.conds.heart && ["pseudoephedrine","phenylephrine"].some(has)) flag("Decongestants (pseudoephedrine/phenylephrine) can raise blood pressure and heart rate.");
     if(P.conds.heart && has("domperidone")) flag("Domperidone can affect heart rhythm. Check it's appropriate with heart disease.", "warning");
     if(P.conds.kidney && has("metformin")) flag("Metformin dosing depends on kidney function (eGFR). Check it's been reviewed.");
     if(P.conds.kidney && has("gabapentin")) flag("Gabapentin needs a lower dose when kidney function is reduced.");
+    if(P.age != null && P.age < 12){
+      const unchecked = ings.filter(e => e.max == null && LIMITS[e.name] && !LIMITS[e.name].perKg).map(e => e.display);
+      if(unchecked.length) flag(`Children's doses for ${unchecked.join(", ")} aren't in the reference table, so ${unchecked.length > 1 ? "they weren't" : "it wasn't"} checked. Confirm the dose for this child's age and weight.`, "warning");
+    }
     if(P.age >= 65){ const b = ings.filter(e => BEERS.includes(e.name)).map(e => e.name); if(b.length) flag(`For adults 65+, ${b.join(", ")} ${b.length > 1 ? "are" : "is"} on the AGS Beers list (higher risk of confusion, falls). Ask about alternatives.`); }
     if(P.allergies) for(const a of String(P.allergies).toLowerCase().split(/[,;]/).map(x => canon(x)).filter(x => x.length > 2)){
       const group = ALLERGY_GROUPS[a] || ALLERGY_GROUPS[a.split(" ")[0].replace(/s$/, "")] || [];

@@ -4,7 +4,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createEngine, BrandDB, parseLine, parseComposition, canon, aiParse, aiReview, CONDITIONS } from "./engine.js";
+import { createEngine, BrandDB, parseLine, parseComposition, canon, isNoteLine, aiParse, aiReview, CONDITIONS } from "./engine.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
@@ -102,7 +102,7 @@ async function resolveMedicines(body){
     try{ meds[i] = { ...m, ...(await engine.lookup(m)) }; }
     catch(e){
       if(m.aiComposition){ meds[i] = { ...m, matched:m.aiComposition, source:"ai", ings:parseComposition(m.aiComposition) }; return; }
-      unresolved.push({ as_written:m.raw, reason:e.message });
+      if(!isNoteLine(m.raw)) unresolved.push({ as_written:m.raw, reason:e.message });
     }
   }));
   return { meds, unresolved };

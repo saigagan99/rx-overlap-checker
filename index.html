@@ -502,7 +502,7 @@ footer{padding:24px 16px 40px;color:var(--faint);font-size:12.5px;text-align:cen
 </dialog>
 
 <script type="module">
-import { createEngine, BrandDB, parseLine, parseComposition, posNum, CONDITIONS, displayName, aiParse, aiReview } from "./engine.js";
+import { createEngine, BrandDB, parseLine, parseComposition, posNum, isNoteLine, CONDITIONS, displayName, aiParse, aiReview } from "./engine.js";
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -721,6 +721,7 @@ $("btn_parse").onclick = async () => {
   meds = parsed.map((p, i) => { const old = prev.get(p.raw); if(old) return {...old, ings:old.ings.map(g => ({...g}))}; fresh.push(i); return {...p, ings:[]}; });
   showMedErrors = false;
   await Promise.all(fresh.map(i => resolveMed(i, meds[i], false)));
+  meds = meds.filter(m => m.ings?.length || !isNoteLine(m.raw)); // drop header/advice lines like "Dr. Sharma MBBS"
   renderMeds(); summary(2, []);
   busy(btn, false); $("parse_status").textContent = "";
   go(2);
